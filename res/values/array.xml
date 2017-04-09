@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    
+     <string-array name="translate">
+        <item>翻译</item>
+    </string-array>
+    <string-array name="translate_provider">
+        <item>百度翻译</item>
+        <item>必应翻译</item>
+    </string-array>
+     <string-array name="language">
+        <item>自动识别</item>
+        <item>中文</item>
+        <item>英语</item>
+        <item>日语</item>
+        <item>韩语</item>
+        <item>法语</item>
+        <item>泰语</item>
+        <item>俄语</item>
+        <item>德语</item>
+        <item>希腊语</item>
+        <item>意大利语</item>
+        <item>西班牙语</item>
+        <item>葡萄牙语</item>
+        <item>阿拉伯语</item>
+    </string-array>
+    <string-array name="language_short">
+        <item>auto</item>
+        <item>zh</item>
+        <item>en</item>
+        <item>jp</item>
+        <item>kor</item>
+        <item>fra</item>
+        <item>th</item>
+        <item>ru</item>
+        <item>de</item>
+        <item>el</item>
+        <item>it</item>
+        <item>spa</item>
+        <item>pt</item>
+        <item>ara</item>
+    </string-array>
+</resources>
