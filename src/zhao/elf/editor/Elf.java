@@ -27,6 +27,7 @@
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+
 package zhao.elf.editor;
 
 import java.io.ByteArrayInputStream;
@@ -276,8 +277,8 @@ public class Elf implements Closeable {
 	public static class ItemHelper {
 		public String oldval;
 		public String newVal;
-		public int sym_offset;
 		public byte[] data;
+		public int sym_offset = -1; //符号索引
 
 		public ItemHelper() {
 		}
@@ -430,7 +431,7 @@ public class Elf implements Closeable {
 	private byte[] mStringTable;
 
 	private byte mRoDataStringTable[];
-
+	// private List<String> mRoDataStrings;
 	Elf_Phdr[] mProgHeaders;
 	Elf_Sym[] mDynamicSymbols;
 	Elf_Sym[] mHashSymbols;
@@ -442,6 +443,11 @@ public class Elf implements Closeable {
 	private int num_buckets;
 
 	private int num_chains;
+
+	// These could probably be memoized.
+	private int buckets[];
+
+	private int chains[];
 
 	private boolean error; // 解析时是否有错误
 
@@ -547,8 +553,7 @@ public class Elf implements Closeable {
 		}
 	}
 
-	public Elf(ByteArrayInputStream bis, ResourceCallBack callBack)
-			throws IOException, UnknownFormatConversionException {
+	public Elf(ByteArrayInputStream bis, ResourceCallBack callBack) throws IOException, UnknownFormatConversionException {
 		this(bis);
 		for (ItemHelper item : this.dy_items) {
 			ResourceHelper helper = new ResourceHelper();
@@ -603,6 +608,23 @@ public class Elf implements Closeable {
 		return sb.toString();
 	}
 
+	/**
+	 * 查找是否有这个符号,同时返回索引
+	 * */
+	public int find(String str) {
+		long hash = ELFHash(str);
+		for (int i = buckets[(int) (hash % num_buckets)]; i != 0; i = chains[i]) {
+			Elf_Sym ds = mDynamicSymbols[i];
+			String string = getDynString(ds.st_name);
+			System.out.println(string);
+			if (string.equals(str)) {
+				//Logger.write("str=" + str + " " + "pos=" + i + "\n");
+				return i;
+			}
+		}
+		return -1;
+	}
+	
 	final byte getDataEncoding() {
 		return e_ident[EI_DATA];
 	}
@@ -668,6 +690,22 @@ public class Elf implements Closeable {
 		final Ehdr h = mHeader;
 		final LEDataInputStream r = mReader;
 		final boolean is64bit = is64bit();
+		
+		//读取Hash表
+		Elf_Shdr dyhash = getSectionByName(SHN_HASH);
+		if (dyhash != null) {
+			r.seek(dyhash.getOffset());
+			num_buckets = r.readInt();
+			num_chains = r.readInt();
+			buckets = r.readIntArray(num_buckets);
+			chains = r.readIntArray(num_chains);
+			int actual = num_buckets * 4 + num_chains * 4 + 8;
+			if (dyhash.getSize() != actual) {
+				throw new IOException("Error reading string table (read " + actual + "bytes, expected to " + "read "
+						+ dyhash.getSize() + "bytes).");
+			}
+		}
+		
 		Elf_Shdr dynsym = getSectionByName(SHN_DYNSYM);
 		if (dynsym != null) {
 			r.seek(dynsym.getOffset());
@@ -709,54 +747,17 @@ public class Elf implements Closeable {
 
 			String string = new String(mDynStringTable);
 			String[] mDyStrs = string.split("\0");
-			int index = 1;
 			for (String mDyStr : mDyStrs) {
 				if (mDyStr.length() == 0) {
 					continue;
 				}
 				ItemHelper item = new ItemHelper();
 				item.oldval = mDyStr;
-				if (mDyStr.startsWith("lib") && mDyStr.endsWith(".so")) {
-					item.sym_offset = -1;
-				} else {
-					item.sym_offset = index++;
-				}
 				items.add(item);
+				item.sym_offset = find(mDyStr);
 			}
+		}
 
-			/*
-			 * int index = 0; Elf_Sym previous_sym = null; for (Elf_Sym ds :
-			 * mDynamicSymbols) { System.out.println(ds.st_name); ItemHelper
-			 * item = new ItemHelper();
-			 * 
-			 * if (previous_sym != null &&
-			 * !getDynString(previous_sym.st_name).equals("SHN_UNDEF")) { String
-			 * s = items.get(items.size() - 1).oldval; if (ds.st_name !=
-			 * previous_sym.st_name + s.length() + 1) { int offset =
-			 * previous_sym.st_name + s.length() + 1; while (offset < ds.st_name
-			 * && offset < mDynStringTable.length) { ItemHelper item2 = new
-			 * ItemHelper(); item2.oldval = getDynString(offset);
-			 * item2.sym_offset = -1; items.add(item2); offset +=
-			 * item2.oldval.length() + 1; } } }
-			 * 
-			 * item.oldval = getDynString(ds.st_name); item.sym_offset =
-			 * index++; items.add(item); Logger.write(item.oldval + "\n");
-			 * previous_sym = ds; }
-			 */
-		}
-		Elf_Shdr dyhash = getSectionByName(SHN_HASH);
-		if (dyhash != null) {
-			r.seek(dyhash.getOffset());
-			num_buckets = r.readInt();
-			num_chains = r.readInt();
-			r.readIntArray(num_buckets);
-			r.readIntArray(num_chains);
-			int actual = num_buckets * 4 + num_chains * 4 + 8;
-			if (dyhash.getSize() != actual) {
-				throw new IOException("Error reading string table (read " + actual + "bytes, expected to " + "read "
-						+ dyhash.getSize() + "bytes).");
-			}
-		}
 
 		mProgHeaders = new Elf_Phdr[h.e_phnum];
 		for (int i = 0; i < h.e_phnum; i++) {
@@ -791,7 +792,6 @@ public class Elf implements Closeable {
 		if (roData != null) {
 			r.seek(roData.getOffset());
 			mRoDataStringTable = new byte[roData.getSize()];
-			// Logger.write("roData.getSize=" + roData.getSize() + "\n");
 			r.readFully(mRoDataStringTable);
 			ro_items = new ArrayList<ItemHelper>();
 
@@ -800,6 +800,7 @@ public class Elf implements Closeable {
 				while (end != mRoDataStringTable.length && mRoDataStringTable[end++] == 0)
 					; // 去除开头可能的结尾
 				int start = end;
+				//对于字符串末尾有空格的情况，也要一同取出，空格ascii是20,而0是结尾
 				while (end != mRoDataStringTable.length && mRoDataStringTable[end++] != 0)
 					;
 				ItemHelper item = new ItemHelper();
@@ -808,13 +809,6 @@ public class Elf implements Closeable {
 				System.arraycopy(mRoDataStringTable, start - 1, item.data, 0, item.data.length);
 				ro_items.add(item);
 			}
-			/*
-			 * String string = new String(mRoDataStringTable); String[] mRoStrs
-			 * = string.split("\0"); for (String mRoStr : mRoStrs) { if
-			 * (mRoStr.length() == 0) { continue; } ItemHelper item = new
-			 * ItemHelper(); item.oldval = mRoStr; // Logger.write(mRoStr +
-			 * "\n"); ro_items.add(item); }
-			 */
 		}
 		return true;
 	}
@@ -831,7 +825,7 @@ public class Elf implements Closeable {
 		}
 		return (hash & 0x7FFFFFFF);
 	}
-
+	
 	/**
 	 * 写入符号表hash
 	 */
@@ -840,22 +834,18 @@ public class Elf implements Closeable {
 		lmOut.writeInt(num_chains);
 		int buckets_t[] = new int[num_buckets];
 		int chains_t[] = new int[num_chains];
+		
 		for (ItemHelper item : items) {
-			/*
-			 * if (item.oldval.endsWith(".so") && item.oldval.startsWith("lib"))
-			 * { continue; }
-			 */
-
-			int offset = (int) (ELFHash(item.newVal == null ? item.oldval : item.newVal) % num_buckets);
+			//没有符号索引，说明该字符串不是符号表中的
 			if (item.sym_offset == -1) {
 				continue;
 			}
-
+			int offset = (int) (ELFHash(item.newVal == null ? item.oldval : item.newVal) % num_buckets);
+			
 			if (buckets_t[offset] == 0) {
 				buckets_t[offset] = item.sym_offset;
 			} else {
-				for (offset = buckets_t[offset]; offset != 0; offset = chains_t[offset]) {
-
+				for (offset = buckets_t[offset];offset != 0; offset = chains_t[offset]) {
 					if (chains_t[offset] == 0) {
 						chains_t[offset] = item.sym_offset;
 						break;
@@ -904,7 +894,8 @@ public class Elf implements Closeable {
 	}
 
 	/**
-	 * 写ELF
+	 * 写ELF 
+	 * @param os 文件输出流
 	 ****/
 	public final void writeELF(OutputStream os) throws IOException {
 		final LEDataOutputStream lmOut = new LEDataOutputStream(os);
@@ -913,7 +904,6 @@ public class Elf implements Closeable {
 		long offset = dynLinkSec.getOffset();
 		Elf_Shdr dyhash = getSectionByName(SHN_HASH);
 		long offset2 = dyhash.getOffset();
-
 		// 需要注意的是哪个段在前，不是所有的elf文件段都是一样顺序的
 		if (offset > offset2) {
 			writeExtra(0, offset2, lmOut); // 写入前面部分
@@ -970,6 +960,94 @@ public class Elf implements Closeable {
 		}
 	}
 
+	// 排序字符串，由于字符串在arsc中是一一对应的，所以不能改变原来的一一对应，需要将列表进行排序
+	/*
+	 * @SuppressLint("DefaultLocale") public void sortStringBlock(String src,
+	 * String tar/* , SQLiteDatabase... db
+	 *//*
+		 * ) { /* if (!isSorted) { isSorted = true; }
+		 */
+	// 查找原字符串在strings这个有序的数组中的位置，以此确定修改后的字符串对应的位置
+	/*
+	 * int position = mRoDataStrings.indexOf(src); //
+	 * 如果在strings中查找到这个字符串，并且修改后的字符串不为空 if (position >= 0 && !tar.equals("")) {
+	 * // 从strings数组中移除原来的内容 // strings.remove(position); // 将新字符串添加到相应的位置
+	 * mRoDataStrings.set(position, tar); /* if (db.length == 1 && db[0] !=
+	 * null) { // 添加到词典 ContentValues values = new ContentValues();
+	 * values.put("word", src.toLowerCase()); values.put("explain", tar);
+	 * db[0].insert("Words", null, values); }
+	 */
+	/*
+	 * } }
+	 * 
+	 * public void sortRoString(List<String> roStr_s, List<String> roTar_s) {
+	 * int index = 0; for (String string : roStr_s) { // 排序字符串
+	 * sortStringBlock(string, roTar_s.get(index)); index++; } }
+	 * 
+	 * public ByteArrayOutputStream writeRoString() throws
+	 * UnsupportedEncodingException, IOException { ByteArrayOutputStream bos =
+	 * new ByteArrayOutputStream(); int len = 0; int zc = 0; for (String string
+	 * : mRoDataStrings) { /* Logger.write("string=" + string); if
+	 * (string.length() == 0) { bos.write(0); len++; zc++; } else { if (zc != 0
+	 * && zc % 4 != 0) { zc = 0; while (len % 4 != 0) { bos.write(0); len++; } }
+	 * byte[] data = string.getBytes(); bos.write(data); bos.write(0); len +=
+	 * data.length; } } if (len % 4 == 0) { bos.write(0); len++; }
+	 */
+	/*
+	 * if (string.length() == 0) { bos.write(0); len++; } else { byte[] data =
+	 * string.getBytes(); bos.write(data); bos.write(0); len += data.length + 1;
+	 * } } while (len % 4 != 0) { bos.write(0); len++; } bos.close(); return
+	 * bos; }
+	 * 
+	 * class O { long offset; long size = -1; }
+	 * 
+	 * Map<Long, O> n_offsets = new TreeMap<Long, O>();
+	 * 
+	 * private void recordOffset(int padding) { Elf_Shdr rodata =
+	 * getSectionByName(SHN_RODATA); for (Elf_Shdr sec : mSectionHeaders) { if
+	 * (sec.getOffset() < rodata.getOffset()) { continue; } else { final long
+	 * offset = mHeader.getSectionOffset() + padding + (sec.index *
+	 * mHeader.e_shentsize); O o = new O(); o.offset = sec.getOffset() +
+	 * padding; if (sec.getOffset() == rodata.getOffset()) { o.size =
+	 * mRoDataStringTable.length + padding; } n_offsets.put(offset, o); } } }
+	 * 
+	 * public void fixOffset(OutputStream os, int padding) throws
+	 * FileNotFoundException, IOException { final LEDataOutputStream lmOut = new
+	 * LEDataOutputStream(os); mReader = new LEDataInputStream(
+	 * zhao.apkmodifier.Utils.FileUtils.InputStream2ByteArray(new
+	 * FileInputStream("/sdcard/3.so"))); long s_off = 0; if (is64bit()) {
+	 * writeExtra(0, 40, lmOut); lmOut.writeLong(mHeader.getSectionOffset() +
+	 * padding); s_off += 48; } else { writeExtra(0, 32, lmOut);
+	 * lmOut.writeInt((int) (mHeader.getSectionOffset() + padding)); s_off +=
+	 * 36; }
+	 * 
+	 * for (long offset : n_offsets.keySet()) { // Logger.write("offset" +
+	 * offset + "\n"); O o = n_offsets.get(offset); writeExtra(s_off, offset,
+	 * lmOut); // 写入余下部分 s_off = offset; if (is64bit()) { if (o.size != -1) { //
+	 * 写rodata段大小 writeExtra(s_off, s_off + 32, lmOut); lmOut.writeLong(o.size);
+	 * s_off += 40; } else { writeExtra(s_off, s_off + 24, lmOut);
+	 * lmOut.writeLong(o.offset); s_off += 32; } } else {
+	 * 
+	 * if (o.size != -1) { // 写rodata段大小 writeExtra(s_off, s_off + 20, lmOut);
+	 * lmOut.writeInt((int) o.size); s_off += 24; } else { writeExtra(s_off,
+	 * s_off + 16, lmOut); lmOut.writeInt((int) o.offset); s_off += 20; }
+	 * 
+	 * } }
+	 * 
+	 * writeExtra(s_off, mReader.size, lmOut); // 写入余下部分 lmOut.close(); }
+	 * 
+	 * public final void writeELF2(OutputStream os) throws IOException { final
+	 * LEDataOutputStream lmOut = new LEDataOutputStream(new
+	 * FileOutputStream("/sdcard/3.so")); ByteArrayOutputStream bos =
+	 * writeRoString(); // 偏移 int padding = bos.size() -
+	 * mRoDataStringTable.length; // 记录偏移 recordOffset(padding); Elf_Shdr roData
+	 * = getSectionByName(SHN_RODATA); int offset = 0; if (roData != null) {
+	 * writeExtra(0, roData.getOffset(), lmOut); offset = (int)
+	 * roData.getOffset(); lmOut.writeFully(bos.toByteArray()); offset +=
+	 * mRoDataStringTable.length; } writeExtra(offset, mReader.size, lmOut); //
+	 * 写入余下部分 lmOut.close(); close(); fixOffset(os, padding); }
+	 */
+
 	/**
 	 * 整理数据(字符串)
 	 **/
@@ -990,6 +1068,27 @@ public class Elf implements Closeable {
 		}
 	}
 
+	public void writeRodataBytes() throws UnsupportedEncodingException {
+		for (ItemHelper item : ro_items) {
+			if (item.newVal != null && !item.newVal.equals("")) {
+				byte[] s_data = item.data;
+				// 找到偏移位置
+				int pos = findBytesPos(mRoDataStringTable, s_data);
+				if (pos == -1) {
+					continue;
+				}
+				byte[] data = item.newVal.getBytes();
+				for (byte b : data) { // 替换
+					mRoDataStringTable[pos++] = b;
+				}
+				int len_s = s_data.length - data.length;
+				while (len_s-- > 0) {
+					mRoDataStringTable[pos++] = 20; //替换成空格，以保证文件大小不变
+				}
+			}
+		}
+	}
+	
 	/** 在内存中搜索数据 **/
 	public static int findBytesPos(byte[] data, byte[] found) {
 		for (int i = 0; i < data.length; i++) {
@@ -1001,28 +1100,5 @@ public class Elf implements Closeable {
 			}
 		}
 		return -1;
-	}
-
-	public void writeRodataBytes() throws UnsupportedEncodingException {
-		for (ItemHelper item : ro_items) {
-			if (item.newVal != null && !item.newVal.equals("")) {
-				byte[] s_data = item.data;
-				// 找到偏移位置
-				int pos = findBytesPos(mRoDataStringTable, s_data);
-				if (pos == -1) {
-					continue;
-				}
-				// Logger.write(item.oldval + " " + "pos=" + pos + " new= " +
-				// item.newVal);
-				byte[] data = item.newVal.getBytes();
-				for (byte b : data) { // 替换
-					mRoDataStringTable[pos++] = b;
-				}
-				int len_s = s_data.length - data.length;
-				while (len_s-- > 0) {
-					mRoDataStringTable[pos++] = 20;
-				}
-			}
-		}
-	}
+	}	
 }

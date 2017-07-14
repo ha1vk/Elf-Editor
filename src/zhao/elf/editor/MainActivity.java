@@ -60,6 +60,9 @@ import android.os.AsyncTask;
 import android.os.Bundle;
 import android.text.ClipboardManager;
 import android.text.Editable;
+import android.text.InputFilter;
+import android.text.SpannableStringBuilder;
+import android.text.Spanned;
 import android.text.TextWatcher;
 import android.view.LayoutInflater;
 import android.view.View;
@@ -247,6 +250,7 @@ public class MainActivity extends Activity {
 				showMessage(MainActivity.this, result).show();
 				return;
 			}
+			Toast.makeText(MainActivity.this, "success",0).show();
 			finish();
 		}
 
@@ -336,10 +340,30 @@ public class MainActivity extends Activity {
 			// 获取用来修改的文本框
 			EditText txtTranslatedView = (EditText) view.findViewById(R.id.txtTranslated);
 
+			final String originalStr = txtOriginal.get(position);
 			// 显示原来的字符串
-			txtOriginalView.setText(txtOriginal.get(position));
+			txtOriginalView.setText(originalStr);
 			// 显示修改后的字符串
 			txtTranslatedView.setText(txtTranslated.get(position));
+			txtTranslatedView.setFilters(new InputFilter[] { new InputFilter() {
+				@Override
+				public CharSequence filter(CharSequence source, int start, int end, Spanned dest, int dstart,
+						int dend) {
+					int len = 0;
+					boolean more = false;
+					do {
+						SpannableStringBuilder builder = new SpannableStringBuilder(dest).replace(dstart, dend,
+								source.subSequence(start, end));
+						len = builder.toString().getBytes().length;
+						more = len > originalStr.getBytes().length;
+						if (more) {
+							end--;
+							source = source.subSequence(start, end);
+						}
+					} while (more);
+					return source;
+				}
+			}});
 			// 为文本框设置内容改变的监听器
 			txtTranslatedView.addTextChangedListener(textWatcher);
 			View.OnLongClickListener longclick_listener = new View.OnLongClickListener() {
