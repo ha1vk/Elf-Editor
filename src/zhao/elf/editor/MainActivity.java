@@ -372,7 +372,7 @@ public class MainActivity extends Activity {
 					ClipboardManager cm = (ClipboardManager) mContext.getSystemService(Context.CLIPBOARD_SERVICE);
 					// 将文本内容放到系统剪贴板里。
 					cm.setText(txtOriginalView.getText());
-					Toast.makeText(MainActivity.this, "复制成功", Toast.LENGTH_LONG).show();
+					Toast.makeText(MainActivity.this, "Copyed successed", Toast.LENGTH_LONG).show();
 					return true;
 				}
 			};
@@ -568,10 +568,10 @@ public class MainActivity extends Activity {
 		intent.setType("*/*");
 		intent.addCategory(Intent.CATEGORY_OPENABLE);
 		try {
-			startActivityForResult(Intent.createChooser(intent, "请选择文件!"), 0x111);
+			startActivityForResult(Intent.createChooser(intent, "Choose file"), 0x111);
 		} catch (android.content.ActivityNotFoundException ex) {
 			// Potentially direct the user to the Market with a Dialog
-			Toast.makeText(this, "请安装文件管理器", Toast.LENGTH_SHORT).show();
+			Toast.makeText(this, "Choose file explorer", Toast.LENGTH_SHORT).show();
 		}
 	}
 
