@@ -1,15 +1,15 @@
 <?xml version="1.0" encoding="UTF-8" standalone="no"?>
 <resources>
     <string name="app_name">ElfEditor</string>
-    <string name="ok">确定</string>
-    <string name="cancel">取消</string>
-    <string name="error">错误</string>
-    <string name="success">操作成功</string>
-    <string name="failure">操作失败</string>
-    <string name="parsing">正在解析...</string>
-    <string name="saving">保存中...</string>
-    <string name="notice">注意</string>
-    <string name="ensure_save">确定要保存吗</string>
-    <string name="out_of_memory">内存溢出！</string>
-    <string name="crash_message">糟糕，程序已崩溃，请将存储卡目录下的CrashLog.log发送给开发者，以进行修复</string>
+    <string name="ok">OK</string>
+    <string name="cancel">Cancel</string>
+    <string name="error">Error</string>
+    <string name="success">Success</string>
+    <string name="failure">Failed</string>
+    <string name="parsing">Parsing ...</string>
+    <string name="saving">Saving...</string>
+    <string name="notice">Warning</string>
+    <string name="ensure_save">Do you want to save?</string>
+    <string name="out_of_memory">Out of memory</string>
+    <string name="crash_message">Sorry, but program crashed, check CrashLog.log in the root of sdcard for more details.</string>
 </resources>
