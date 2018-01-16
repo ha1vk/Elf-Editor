@@ -1083,7 +1083,7 @@ public class Elf implements Closeable {
 				}
 				int len_s = s_data.length - data.length;
 				while (len_s-- > 0) {
-					mRoDataStringTable[pos++] = 20; //替换成空格，以保证文件大小不变
+					mRoDataStringTable[pos++] = 00; //替换成空格，以保证文件大小不变
 				}
 			}
 		}
